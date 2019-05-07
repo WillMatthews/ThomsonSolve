@@ -53,11 +53,11 @@ scaledL2 diffs s = (l2 diffs) -- * s * log(s :: Float)
 getSinglePairForce :: [Float] -> [Float] -> Int -> [Float]
 getSinglePairForce point loc s
     | s <= 0    = error "Negative or zero s is illegal"
-    |otherwise =  map (/ (scaledL2(vecDiff point loc) s )^(s+1)) (vecDiff point loc) 
+    |otherwise =  map (/ (scaledL2(vecDiff point loc) s)^(s+1)) (vecDiff point loc) 
 
 -- obtain forces for a single point from each other point
 getAllSinglePairForces :: [Float] -> [[Float]] -> Int -> [[Float]]
-getAllSinglePairForces point allPoints s = [ getSinglePairForce point loc s | loc <- allPoints, loc /= point ] 
+getAllSinglePairForces point allPoints s = [getSinglePairForce point loc s | loc <- allPoints, loc /= point] 
 
 -- for a single point sum up all pair forces
 getForceSinglePoint :: [Float] -> [[Float]] -> Int -> [Float]
@@ -65,7 +65,7 @@ getForceSinglePoint point allPoints s =  map sum . transpose $ (getAllSinglePair
 
 -- obtain forces for all points
 getForces :: [[Float]] -> Int -> [[Float]]
-getForces allPoints s = [ getForceSinglePoint testPoint allPoints s | testPoint <-allPoints ] 
+getForces allPoints s = [getForceSinglePoint activePoint allPoints s | activePoint <- allPoints] 
 
 -- obtain accelerations f/m = a, for this case 'm' is unity. TODO check if this needs changing
 getAccelerations :: [[Float]] -> Int -> [[Float]]
@@ -81,7 +81,7 @@ getAccelerations allPoints s = getForces allPoints s
 -- TODO apply transition function over and over
 
 
----------------- display functions--------------------
+---------------- display functions --------------------
 
 
 -- plotting code here
