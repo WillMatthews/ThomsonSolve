@@ -17,3 +17,6 @@ This project was made to explore space-optimal structures for high dimensional c
 ### Why did you write this in Haskell?
 I was in the Haskell folder on my computer and I was too lazy to move to the python folder to start this project.
 I was also rusty in my Haskell and I needed the practise.
+
+### Why is your indenting so bad?
+I use a [Haskell Concealer](https://github.com/enomsg/vim-haskellConcealPlus) in vim! 
