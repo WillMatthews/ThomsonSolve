@@ -98,13 +98,13 @@ getAccelerations :: [[Float]] -> Int -> [[Float]]
 getAccelerations allPoints s = getForces allPoints s
 
 extractPoints ::  [([Float],[Float])] -> [[Float]]
-extractPoints inTupList = [fst(subTup) | subTup <- inTupList]
+extractPoints inTupList = [x | (x,y) <- inTupList]
 
 extractVelocities :: [([Float],[Float])] -> [[Float]]
-extractVelocities inTupList = [snd(subTup) | subTup <- inTupList]
+extractVelocities inTupList = [y | (x,y) <- inTupList]
 
 extractPointStruct :: ((Float, Int),[([Float],[Float])]) -> [([Float],[Float])]
-extractPointStruct globalStruct = snd globalStruct
+extractPointStruct (a,b) = b
 
 -- REMINDER the structure is ((dt, s),[([point],[velocity])]) 
 
@@ -112,16 +112,15 @@ extractPointStruct globalStruct = snd globalStruct
 -- update all velocities THEN positions - STANDARD EULER METHOD
 -- v = v_old + a * dt
 getNewVelocities :: [([Float],[Float])] -> Float -> Int -> [[Float]]
-getNewVelocities pointStruct dt s = [ normIfGtr (zipWith(+) (fst into) (snd into)) 1.0 | into <- (zip (extractVelocities pointStruct) ( multListOfListByConst dt (getAccelerations (extractPoints pointStruct) s)))]
+getNewVelocities pointStruct dt s = [ normIfGtr (zipWith(+) x y) 1.0 | (x,y) <- (zip (extractVelocities pointStruct) ( multListOfListByConst dt (getAccelerations (extractPoints pointStruct) s)))]
 
 -- x = x_old + v * dt
 updateAllPoints :: [([Float],[Float])] -> Float -> Int -> [([Float],[Float])]
-updateAllPoints pointStruct dt s = [  ((normIfGtr ( (zipWith(+) (fst inTup) (map (dt *) (snd inTup)))) 1.0) , (snd inTup) )  | inTup <- (zip (extractPoints pointStruct) (getNewVelocities pointStruct dt s))]
+updateAllPoints pointStruct dt s = [  ((normIfGtr ( (zipWith(+) x (map (dt *) y))) 1.0) , y )  | (x,y) <- (zip (extractPoints pointStruct) (getNewVelocities pointStruct dt s))]
 
 --                  dt     s       pointstruct
 transFunction :: ((Float, Int),[([Float],[Float])]) -> ((Float, Int),[([Float],[Float])])
-transFunction globalStruct = ((fst globalStruct), updateAllPoints (snd globalStruct) (fst (fst globalStruct)) (snd (fst globalStruct)))
-
+transFunction ((x,y),b) = ((x,y), updateAllPoints b x y)
 
 -- Apply Random Start to Trans Function
 --              d      k       dt      s      n
