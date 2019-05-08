@@ -10,11 +10,19 @@ debugAllPoint d k
     | k < 0     = error "Negative points is not allowed"
     | otherwise = splitEvery d ( take (d*k) (randomRs (-0.5,0.5) (mkStdGen 42))  ) 
 
-debugTestStruct :: Float -> Int -> Int -> Int -> ((Float, Int),[([Float],[Float])])
-debugTestStruct dt s d k = ((dt,s), zip (debugAllPoint d k)  ([makeZeroVelocity 2 | cnt <- (debugAllPoint d k)]) )
+debugTestStruct :: Float -> Int -> Int -> Int -> ((Float,Int),[([Float],[Float])])
+debugTestStruct dt s d k = ((dt,s), zip (debugAllPoint d k) ([makeZeroVelocity 2 | cnt <- (debugAllPoint d k)]) )
 
 debugPointStruct :: Int -> Int -> [([Float],[Float])]
-debugPointStruct d k = zip  (debugAllPoint d k) ([makeZeroVelocity 2 | cnt <- (debugAllPoint d k)]) 
+debugPointStruct d k = zip (debugAllPoint d k) ([makeZeroVelocity 2 | cnt <- (debugAllPoint d k)]) 
+
+-- debug code - show some random starting positions
+showRandomPoints :: Int -> Int -> IO ()
+showRandomPoints a b = makeAllPointTups a b >>= print
+
+debugTest :: Float -> Int -> Int -> Int -> Int -> ((Float,Int),[([Float],[Float])])
+debugTest dt s d k numIter = (take (numIter+1) (iterate transFunction (debugTestStruct dt s d k))) !! numIter
+
 ---------------- vector operations -------------------
 
 -- vec subtraction:  point - loc
@@ -40,7 +48,7 @@ normIfGtr vecToTest testFloat
     | otherwise                 = vecToTest
 
 multListOfListByConst :: Float -> [[Float]] -> [[Float]]
-multListOfListByConst multFact listIn = [ map (multFact *) subList | subList <- listIn ] 
+multListOfListByConst multFact listIn = [map (multFact *) subList | subList <- listIn] 
 
 
 ------------------- init code  -----------------------
@@ -61,13 +69,9 @@ makePointTup d = makeRandPos d >>= \x -> return (x,makeZeroVelocity d)
 makeAllPointTups :: Int -> Int -> IO [([Float],[Float])]
 makeAllPointTups k d = sequence [makePointTup d | cnt <- [1..k]]
 
--- debug code - show some random starting positions
-showRandomPoints :: Int -> Int -> IO ()
-showRandomPoints a b =  makeAllPointTups a b >>= print
-
---             dims   points   dt   s
 makeState :: Int -> Int -> Float -> Int -> IO ((Float, Int),[([Float],[Float])])
 makeState d k dt s = (makeAllPointTups k d) >>= \x -> return ((dt,s),x)
+
 
 --------------- transition function -------------------
 
@@ -108,15 +112,14 @@ extractPointStruct (a,b) = b
 
 -- REMINDER the structure is ((dt, s),[([point],[velocity])]) 
 
-
 -- update all velocities THEN positions - STANDARD EULER METHOD
 -- v = v_old + a * dt
 getNewVelocities :: [([Float],[Float])] -> Float -> Int -> [[Float]]
-getNewVelocities pointStruct dt s = [ normIfGtr (zipWith(+) x y) 1.0 | (x,y) <- (zip (extractVelocities pointStruct) ( multListOfListByConst dt (getAccelerations (extractPoints pointStruct) s)))]
+getNewVelocities pointStruct dt s = [normIfGtr (zipWith(+) x y) 1.0 | (x,y) <- (zip (extractVelocities pointStruct) (multListOfListByConst dt (getAccelerations (extractPoints pointStruct) s)))]
 
 -- x = x_old + v * dt
 updateAllPoints :: [([Float],[Float])] -> Float -> Int -> [([Float],[Float])]
-updateAllPoints pointStruct dt s = [  ((normIfGtr ( (zipWith(+) x (map (dt *) y))) 1.0) , y )  | (x,y) <- (zip (extractPoints pointStruct) (getNewVelocities pointStruct dt s))]
+updateAllPoints pointStruct dt s = [((normIfGtr ((zipWith(+) x (map (dt *) y))) 1.0),y) | (x,y) <- (zip (extractPoints pointStruct) (getNewVelocities pointStruct dt s))]
 
 --                  dt     s       pointstruct
 transFunction :: ((Float, Int),[([Float],[Float])]) -> ((Float, Int),[([Float],[Float])])
@@ -125,7 +128,7 @@ transFunction ((x,y),b) = ((x,y), updateAllPoints b x y)
 -- Apply Random Start to Trans Function
 --              d      k       dt      s      n
 runIterator :: Int -> Int -> Float -> Int -> Int -> IO ((Float, Int),[([Float],[Float])])
-runIterator d k dt s numIter = makeState d k dt s >>= \x -> return (((take (numIter+1) (iterate transFunction x)) ) !! numIter)
+runIterator d k dt s numIter = makeState d k dt s >>= \x -> return (((take (numIter+1) (iterate transFunction x))) !! numIter)
 
 
 -- debug code
