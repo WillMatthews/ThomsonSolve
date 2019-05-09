@@ -42,7 +42,7 @@
 \section{Disclaimer}
 This was all written by an engineering undergraduate. Exercise reasonable caution and do not believe anything you see here written.
 
-\section{Problem Definition and Use Cases}
+\section{Problem Definition and Use Case}
 Research has revealed high dimensional `one hot vector' codebooks for communications have had little work in their optimisation.
 As noise in a communications system corrupts symbols, the most robust BER performance is obtained by \emph{maximising minimum $L_2$ distance between constellation points}.
 One sense of defining an optimal codebook $\mathcal{C}_{\text{optimal}}$ is
