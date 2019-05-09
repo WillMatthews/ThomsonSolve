@@ -30,7 +30,7 @@
 \DeclarePairedDelimiter{\abs}{\lvert}{\rvert}
 \DeclarePairedDelimiter{\norm}{\lVert}{\rVert}%
 
-\title{An Iterative Riesz s-Energy Based Solution to Achieving High Maximum Minimum Distance Between Points in the $n$-Ball.}
+\title{An Iterative Riesz s-energy Based Solution to Achieving High Maximum Minimum Distance Between Points in the $n$-Ball.}
 \date{April 2019}
 \author{William Matthews\\ Masters Undergraduate of Engineering Science, University of Oxford}
 
@@ -84,7 +84,7 @@ import Data.List.Split
 \subsection{Vector Operations}
 Some general vector operations are defined since the functionality doesn't natively exist in Haskell.
 The $L_2$ norm, vector subtraction, vector normalisation and multiplying a vector by a constant are defined below.
-A `scaled' $L_2$ norm is defined to ensure numerical stability when later used with the Riesz s-Energy method later for high $s$.
+A `scaled' $L_2$ norm is defined to ensure numerical stability when later used with the Riesz s-energy method later for high $s$.
 \begin{code}
 -- vec subtraction:  point - loc
 vecDiff :: [Float] -> [Float] -> [Float]
@@ -146,7 +146,7 @@ The data type for the transition function $g(\cdot)$ to be applied on was \\ \te
 The transition function was designed to return an identical type such that $g(\cdot)$ can be composed $n$ times,\\ $a_n = g(g(\cdots (a_0) \cdots )) $.
 The transition function updates the locations of the points by calculating a `force' between points, and using an Euler's method physics simulation for a single time step.
 
-\subsubsection{Force Function}
+\subsubsection{Force Function - Notes on Riesz s-Energy}
 The program begins with calculating the force using the Riesz s-energy method for a single pair of points.
 The `force function' on a point $p_i$ from another point $p_k$ with the Riesz s-energy method is 
 \begin{equation}
