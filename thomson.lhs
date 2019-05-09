@@ -1,4 +1,4 @@
-\documentclass[11pt,twoside,a4paper]{article}
+\documentclass[11pt,oneside,a4paper]{article}
 
 \usepackage{hyperref}
 \usepackage{mathtools}
@@ -53,6 +53,7 @@ where $\mathfrak{S}$ is the space avaliable to the transmission scheme.
 
 Due to the work on my fourth year project, an algorithm was developed for the case of the ($n-1$)-sphere and $n$-ball.
 This developed algorithm is concerned with the $n$-ball as the volume offers more space for point placement and resembles a \emph{symbol power limit}.
+Solutions were found to exist for point spacing on the ($n-1$)-sphere, so this work was primarily concerned in spacing inside the $n$-ball
 \emph{Future work} will be modifying this existing code to work with 2-ball cartesian products (independant channel power limit).
 
 \emph{No work has been done on Gray Coding the developed constellation, and is a problem left to be solved.}
@@ -69,10 +70,13 @@ A notation detail is that the red hooked arrow {\textcolor{red}{$\hookrightarrow
 \subsection{Imports}
 Only the \texttt{System.Random}\footnote{Installable by doing \texttt{cabal install random}} and \texttt{Data.List.Split}\footnote{Installable by doing \texttt{cabal install split}} modules are needed from outside the base.
 
+{\color{red}plotting\footnote{Installable by doing \texttt{cabal install chart-diagrams}}  }
+
 \begin{code}
 import System.Random
 import Data.List
 import Data.List.Split
+-- import something_for_plotting
 \end{code}
 
 
@@ -221,8 +225,7 @@ The transition function uses the method in \texttt{updateAllPoints} to apply the
 transFunction :: ((Float, Int),[([Float],[Float])]) -> ((Float, Int),[([Float],[Float])])
 transFunction ((x,y),b) = ((x,y), updateAllPoints b x y)
 
--- Apply Random Start to Trans Function
---              d      k       dt      s      n
+-- Run Iterator With Random Start to Trans Function
 runIterator :: Int -> Int -> Float -> Int -> Int -> IO ((Float, Int),[([Float],[Float])])
 runIterator d k dt s numIter = makeState d k dt s >>= \x -> return ((take (numIter+1) (iterate transFunction x)) !! numIter)
 \end{code}
