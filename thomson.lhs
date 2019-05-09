@@ -60,7 +60,7 @@ Solutions were found to exist for point spacing on the ($n-1$)-sphere, so this w
 
 \section{Algorithm}
 The code for this project is written in Haskell (a pure functional language) to ensure safe code.
-While Haskell is a high level language the program still performs adequately highly due Haskell being a compiled language.
+While Haskell is a high level language the program still performs adequately highly due to Haskell being a compiled language.
 
 This section details the code in its entirety and highlights any important steps.
 A notation detail is that the red hooked arrow {\textcolor{red}{$\hookrightarrow$} denotes text on the same line but wrapped.
