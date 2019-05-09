@@ -12,9 +12,9 @@ A small modification that I will make soon is to place the points on the (n-1)-s
 ## How do I run this or view documentation?
 To view documentation run `pdflatex thomson.lhs`
 
-To compile for the program run `ghc -o thomson thomson.hs`
+To compile for the program run `ghc -o thomson thomson.lhs`
 
-Currently there is no `main` so you may want to just load into ghci `:l thomson`
+Currently there is no `main` so you may want to just load into GHCi `:l thomson`
 
 ## FAQs
 ### Why was this even made?
