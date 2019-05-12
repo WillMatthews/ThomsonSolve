@@ -53,8 +53,8 @@ where $\mathfrak{S}$ is the space avaliable to the transmission scheme.
 
 Due to the work on my fourth year project, an algorithm was developed for the case of the ($n-1$)-sphere and $n$-ball.
 This developed algorithm is concerned with the $n$-ball as the volume offers more space for point placement and resembles a \emph{symbol power limit}.
-Solutions were found to exist for point spacing on the ($n-1$)-sphere, so this work was primarily concerned in spacing inside the $n$-ball
-\emph{Future work} will be modifying this existing code to work with 2-ball cartesian products (independant channel power limit).
+Solutions were found to exist for point spacing on the ($n-1$)-sphere, so this work was primarily concerned in spacing inside the $n$-ball.
+\emph{Future work} will be in modifying this existing code to work with 2-ball cartesian products (independant channel power limit).
 
 \emph{No work has been done on Gray Coding the developed constellation, and is a problem left to be solved.}
 
@@ -97,7 +97,7 @@ l2 diffs = sqrt(sum(map (^2) diffs))
 -- TODO fix this - make an appt scaling method
 -- 'scaled' L2 norm for numerical stability
 scaledL2 :: [Float] -> Int -> Float
-scaledL2 diffs s = (l2 diffs)  * (fromIntegral s) * log (fromIntegral s)
+scaledL2 diffs s = (l2 diffs)
 
 normaliseVec :: [Float] -> [Float]
 normaliseVec  vec = map(/ (l2 vec)) vec
@@ -158,14 +158,16 @@ A way of visualising the $s \rightarrow \infty$ case is each point having a hard
 \begin{code}
 getSinglePairForce :: [Float] -> [Float] -> Int -> [Float]
 getSinglePairForce point loc s
-    | s <= 0    = error "Negative or zero s is illegal"
-    |otherwise =  map (/ (scaledL2(vecDiff point loc) s)^(s+1)) (vecDiff point loc)
+    | s <= 0       = error "Negative or zero s is illegal"
+    | point == loc = zipWith(-) loc loc
+    |otherwise     =  map (/ ((scaledL2(vecDiff point loc) s)^(s+1))) (vecDiff point loc)
 \end{code}
 
 Using \texttt{getSinglePairForce} and applying over the list of all points, all the force vectors for a single point can be calculated in \texttt{getAllSinglePairForces} and summed to a single force vector in \texttt{getForceSinglePoint}.
 \begin{code}
 getAllSinglePairForces :: [Float] -> [[Float]] -> Int -> [[Float]]
-getAllSinglePairForces point allPoints s = [getSinglePairForce point loc s | loc <- allPoints, loc /= point]
+getAllSinglePairForces point allPoints s = [getSinglePairForce point loc s | loc <- allPoints]
+--QUERY
 
 -- sum up all pair forces for a SINGLE POINT
 getForceSinglePoint :: [Float] -> [[Float]] -> Int -> [Float]
@@ -210,7 +212,7 @@ extractPointStruct (a,b) = b
 -- update all velocities THEN positions - STANDARD EULER METHOD
 -- v = v_old + a * dt
 getNewVelocities :: [([Float],[Float])] -> Float -> Int -> [[Float]]
-getNewVelocities pointStruct dt s = [normIfGtr (zipWith(+) x y) 1.0 | (x,y) <- (zip (extractVelocities pointStruct) (multListOfListByConst dt (getAccelerations (extractPoints pointStruct) s)))]
+getNewVelocities pointStruct dt s = [normIfGtr (zipWith(+) x y) 0.5 | (x,y) <- (zip (extractVelocities pointStruct) (multListOfListByConst dt (getAccelerations (extractPoints pointStruct) s)))]
 
 -- x = x_old + v * dt
 updateAllPoints :: [([Float],[Float])] -> Float -> Int -> [([Float],[Float])]
@@ -228,6 +230,8 @@ transFunction ((x,y),b) = ((x,y), updateAllPoints b x y)
 -- Run Iterator With Random Start to Trans Function
 runIterator :: Int -> Int -> Float -> Int -> Int -> IO ((Float, Int),[([Float],[Float])])
 runIterator d k dt s numIter = makeState d k dt s >>= \x -> return ((take (numIter+1) (iterate transFunction x)) !! numIter)
+
+-- iterateToFile d k dt s numIter = runIterator d k dt s >>= show
 \end{code}
 
 \subsection{Display Code}
@@ -261,8 +265,8 @@ debugPointStruct d k = zip (debugAllPoint d k) ([makeZeroVelocity 2 | cnt <- (de
 debugShowRandomPoints :: Int -> Int -> IO ()
 debugShowRandomPoints a b = makeAllPointTups a b >>= print
 
-debugTest :: Float -> Int -> Int -> Int -> Int -> ((Float,Int),[([Float],[Float])])
-debugTest dt s d k numIter = (take (numIter+1) (iterate transFunction (debugTestStruct dt s d k))) !! numIter
+debugTest :: Int -> Int -> Float -> Int -> Int -> ((Float,Int),[([Float],[Float])])
+debugTest d k dt s numIter = (take (numIter+1) (iterate transFunction (debugTestStruct dt s d k))) !! numIter
 
 showTest :: Int -> Int -> Float -> Int -> Int -> IO ()
 showTest d k dt s numIter = (runIterator d k dt s numIter) >>= print 
