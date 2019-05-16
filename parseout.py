@@ -43,3 +43,5 @@ plt.plot(ptX, ptY, 'ro')
 #plt.plot(velX, velY, 'ro')
 #plt.axis([0, 6, 0, 20])
 plt.show()
+
+#writeFile "./test.txt" (show (debugTest 2 16 0.001 4 10000))
