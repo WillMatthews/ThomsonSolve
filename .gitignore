@@ -5,3 +5,11 @@ test.txt
 *.toc
 *.aux
 *.out
+
+# Haskell build artifacts
+dist-newstyle/
+*.hi
+*.o
+
+# generated plot
+thomson.svg

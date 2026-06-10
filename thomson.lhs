@@ -65,113 +65,127 @@ While Haskell is a high level language the program still performs adequately hig
 This section details the code in its entirety and highlights any important steps.
 A notation detail is that the red hooked arrow {\textcolor{red}{$\hookrightarrow$} denotes text on the same line but wrapped.
 
-%-- REMINDER the structure is ((dt, s),[([point],[velocity])]) 
-
 \subsection{Imports}
-Only the \texttt{System.Random}\footnote{Installable by doing \texttt{cabal install random}} and \texttt{Data.List.Split}\footnote{Installable by doing \texttt{cabal install split}} modules are needed from outside the base.
-
-{\color{red}plotting\footnote{Installable by doing \texttt{cabal install chart-diagrams}}  }
+Only \texttt{System.Random}\footnote{Installable by doing \texttt{cabal install random}} and \texttt{Data.List.Split}\footnote{Installable by doing \texttt{cabal install split}} are needed for the simulation itself, and \texttt{Control.Monad} supplies \texttt{replicateM} for the initialisation code.
+Plotting is handled entirely in Haskell via the \texttt{Chart} library with its diagrams backend\footnote{Installable by doing \texttt{cabal install Chart Chart-diagrams}}, which renders an SVG without any external tooling.
 
 \begin{code}
+module Main where
+
 import System.Random
-import Data.List
-import Data.List.Split
--- import something_for_plotting
+import Data.List (transpose)
+import Data.List.Split (chunksOf)
+import Control.Monad (replicateM)
+
+import Graphics.Rendering.Chart.Easy
+import Graphics.Rendering.Chart.Backend.Diagrams (toFile, fo_size)
 \end{code}
 
+\subsection{Data Types}
+The simulation is described by two record types.
+A \texttt{Particle} bundles a constellation point's position and velocity, and a \texttt{Sim} holds the whole simulation state: the time step \texttt{dt}, the Riesz exponent \texttt{sExp}, and the list of particles.
+Using records (rather than nested tuples) means every field is named, which keeps the rest of the code readable and lets us update the state with record-update syntax.
+A \texttt{Vec} is just an alias for a list of \texttt{Double}s, treated as a vector in $\mathbb{R}^d$.
 
+\begin{code}
+type Vec = [Double]
+
+data Particle = Particle
+    { pos :: Vec   -- position in the n-ball
+    , vel :: Vec   -- velocity
+    } deriving (Show)
+
+data Sim = Sim
+    { dt        :: Double      -- Euler time step
+    , sExp      :: Int         -- Riesz s-energy exponent
+    , particles :: [Particle]
+    } deriving (Show)
+\end{code}
 
 \subsection{Vector Operations}
-Some general vector operations are defined since the functionality doesn't natively exist in Haskell.
-The $L_2$ norm, vector subtraction, vector normalisation and multiplying a vector by a constant are defined below.
-A `scaled' $L_2$ norm is defined to ensure numerical stability when later used with the Riesz s-energy method later for high $s$.
+Some general vector operations are defined since the functionality doesn't natively exist in Haskell: element-wise addition and subtraction, scaling by a constant, the $L_2$ norm, and normalisation to a unit vector.
+The function \texttt{clampNorm} projects a vector back onto the sphere of a given radius whenever it grows longer than that radius; this is what keeps positions inside the $n$-ball and caps velocities.
+
 \begin{code}
--- vec subtraction:  point - loc
-vecDiff :: [Float] -> [Float] -> [Float]
-vecDiff point loc = zipWith(-) point loc
+vadd :: Vec -> Vec -> Vec
+vadd = zipWith (+)
+
+vsub :: Vec -> Vec -> Vec
+vsub = zipWith (-)
+
+scaleVec :: Double -> Vec -> Vec
+scaleVec c = map (c *)
 
 -- L2 norm
-l2 :: [Float] -> Float
-l2 diffs = sqrt(sum(map (^2) diffs))
+l2 :: Vec -> Double
+l2 v = sqrt (sum (map (^ (2 :: Int)) v))
 
--- TODO fix this - make an appt scaling method
--- 'scaled' L2 norm for numerical stability
-scaledL2 :: [Float] -> Int -> Float
-scaledL2 diffs s = (l2 diffs)
+normalise :: Vec -> Vec
+normalise v = scaleVec (1 / l2 v) v
 
-normaliseVec :: [Float] -> [Float]
-normaliseVec  vec = map(/ (l2 vec)) vec
-
--- normalise if L2 norm of vec is greater than a constant
-normIfGtr :: [Float] -> Float -> [Float]
-normIfGtr vecToTest testFloat
-    | l2(vecToTest) > testFloat = map (testFloat *) (normaliseVec vecToTest)
-    | otherwise                 = vecToTest
-
-multListOfListByConst :: Float -> [[Float]] -> [[Float]]
-multListOfListByConst multFact listIn = [map (multFact *) subList | subList <- listIn] 
+-- if |v| exceeds the cap, rescale it onto the sphere of radius `cap`
+clampNorm :: Double -> Vec -> Vec
+clampNorm cap v
+    | l2 v > cap = scaleVec cap (normalise v)
+    | otherwise  = v
 \end{code}
 
 \subsection{Initialisation Code}
-Random points are generated in the \texttt{makeRandPos} function which returns a list of vectors, wrapped in the IO monad.
-Zero velocity initial conditions are set with \texttt{makeZeroVelocity} function which returns a list of vectors with all their elements as zero.
-A single constellation point has its velocity and position packaged as a \emph{tuple} in \texttt{makePointTup}, and this is evaluated over the list of all points in \texttt{makeAllPointTups} to get a list of tuples.
-Care is taken to ensure the IO monad is outside of the datatype.
+A particle is created with a uniformly random position in $[-0.5, 0.5]^d$ and zero velocity by \texttt{randomParticle}, which lives in the \texttt{IO} monad because it draws randomness.
+\texttt{initSim} builds a full \texttt{Sim} of \texttt{k} such particles in \texttt{d} dimensions, with \texttt{dt} and the Riesz exponent supplied by the caller.
+Care is taken to keep the \texttt{IO} on the outside, so the rest of the pipeline stays pure.
 
-Finally, the random collection of points with zero velocities is packaged by \texttt{makeState} into a structure that is suitable for repeated composition of the transition function later.
-The variables \texttt{dt} and \texttt{s} are placed into this structure which are vital for the transition function structure, and again care is taken to keep the IO outside of the datatype.
 \begin{code}
--- initialise velocity - zero for all 'd' dimensions
-makeZeroVelocity :: Int -> [Float]
-makeZeroVelocity d = take d [0.0,0.0..]
+-- a single particle: random position, zero velocity
+randomParticle :: Int -> IO Particle
+randomParticle d = do
+    p <- replicateM d (randomRIO (-0.5, 0.5))
+    return (Particle p (replicate d 0))
 
--- initialise - randomly place 'k' points in 'd' dimensions
-makeRandPos :: Int -> IO [Float]
-makeRandPos d = sequence [randomRIO (-0.5, 0.5) | cnt <- [1..d]]
-
--- initialise data structure for single point ( 'd' dimensional location and velocity terms )
-makePointTup :: Int -> IO ([Float],[Float])
-makePointTup d = makeRandPos d >>= \x -> return (x,makeZeroVelocity d)
-
--- initialise data structure for all 'k' points
-makeAllPointTups :: Int -> Int -> IO [([Float],[Float])]
-makeAllPointTups k d = sequence [makePointTup d | cnt <- [1..k]]
-
-makeState :: Int -> Int -> Float -> Int -> IO ((Float, Int),[([Float],[Float])])
-makeState d k dt s = (makeAllPointTups k d) >>= \x -> return ((dt,s),x)
+-- initial state: k particles in d dimensions
+initSim :: Int -> Int -> Double -> Int -> IO Sim
+initSim d k dt' s = do
+    ps <- replicateM k (randomParticle d)
+    return (Sim dt' s ps)
 \end{code}
 
 \subsection{The Transition Function}
-The data type for the transition function $g(\cdot)$ to be applied on was \\ \texttt{((Float,Int),[([Float],[Float])])}, with each variable being \\ \texttt{((dt, s),[([point],[velocity])])}.
-The transition function was designed to return an identical type such that $g(\cdot)$ can be composed $n$ times,\\ $a_n = g(g(\cdots (a_0) \cdots )) $.
-The transition function updates the locations of the points by calculating a `force' between points, and using an Euler's method physics simulation for a single time step.
+The transition function \texttt{step} maps a \texttt{Sim} to a \texttt{Sim}, so it can be composed (iterated) any number of times, $a_n = \texttt{step}(\texttt{step}(\cdots(a_0)\cdots))$.
+Each call advances the simulation by one Euler time step: it computes the inter-point `forces', turns them into accelerations, and updates every particle's velocity and then position.
 
 \subsubsection{Force Function - Notes on Riesz s-Energy}
-The program begins with calculating the force using the Riesz s-energy method for a single pair of points.
-The `force function' on a point $p_i$ from another point $p_k$ with the Riesz s-energy method is 
+The `force' on a point $p$ from another point $q$ under the Riesz s-energy method is
 \begin{equation}
-    F_{p_i,p_k} = \frac{p_k - p_i}{\norm{p_k-p_i}_2^{s+1}}
+    F_{p,q} = \frac{p - q}{\norm{p-q}_2^{s+1}}
 \end{equation}
-for some $s \in \mathbb{N}$. $F_{p_i,p_k}$ is calculated by \texttt{getSinglePairForce}.
+for some $s \in \mathbb{N}$, which is repulsive (it pushes $p$ away from $q$). This is computed by \texttt{pairForce}.
 For the equispacing case, $s$ is driven to infinity to make the closest point dominate, but this is not possible due to numerical instability, so $s \approx 20$ and above can be used to gain a good approximation.
-A way of visualising the $s \rightarrow \infty$ case is each point having a hard sphere around it - and once points are equispaced the spheres (of identical radius) touch their neighbours.
+A way of visualising the $s \rightarrow \infty$ case is each point having a hard sphere around it --- and once points are equispaced the spheres (of identical radius) touch their neighbours.
+The self-interaction term ($p = q$, giving a zero denominator) contributes no force.
+
 \begin{code}
-getSinglePairForce :: [Float] -> [Float] -> Int -> [Float]
-getSinglePairForce point loc s
-    | s <= 0       = error "Negative or zero s is illegal"
-    | point == loc = zipWith(-) loc loc
-    |otherwise     =  map (/ ((scaledL2(vecDiff point loc) s)^(s+1))) (vecDiff point loc)
+-- repulsive Riesz s-force on point `p` due to neighbour `q`
+pairForce :: Int -> Vec -> Vec -> Vec
+pairForce s p q
+    | s <= 0    = error "pairForce: s must be a positive integer"
+    | r == 0    = replicate (length p) 0   -- same point: no self-force
+    | otherwise = scaleVec (1 / r ^ (s + 1)) d
+  where
+    d = vsub p q
+    r = l2 d
 \end{code}
 
-Using \texttt{getSinglePairForce} and applying over the list of all points, all the force vectors for a single point can be calculated in \texttt{getAllSinglePairForces} and summed to a single force vector in \texttt{getForceSinglePoint}.
-\begin{code}
-getAllSinglePairForces :: [Float] -> [[Float]] -> Int -> [[Float]]
-getAllSinglePairForces point allPoints s = [getSinglePairForce point loc s | loc <- allPoints]
---QUERY
+The total force on a single point is the sum of the pair forces from every point (its own term is zero, so it can be left in the sum).
+\texttt{sumVecs} adds a list of vectors component-wise.
 
--- sum up all pair forces for a SINGLE POINT
-getForceSinglePoint :: [Float] -> [[Float]] -> Int -> [Float]
-getForceSinglePoint point allPoints s = map sum . transpose $ (getAllSinglePairForces point allPoints s)
+\begin{code}
+-- component-wise sum of a list of vectors
+sumVecs :: [Vec] -> Vec
+sumVecs = map sum . transpose
+
+-- total force on point `p` from all points `qs`
+forceOn :: Int -> [Vec] -> Vec -> Vec
+forceOn s qs p = sumVecs (map (pairForce s p) qs)
 \end{code}
 
 \subsubsection{Euler Physics Update}
@@ -186,93 +200,110 @@ Euler's method for this case is
     \end{equation}
 \end{subequations}
 where $a$ is an acceleration, $v(t)$ is a velocity at iteration $t$ and $p(t)$ is a position at iteration $t$.
-The acceleration is calculated from Newton's Second Law in \texttt{getAccelerations}, which uses the forces on all points from \texttt{getForces}.
-
-\texttt{getNewVelocities} updates the velocities first, so the position update in \texttt{updateAllPoints} can occur.
+The mass of each point is taken to be unity, so the acceleration equals the force.
+The velocity is updated first (and clamped to a maximum speed of $0.5$), then the position is advanced and clamped to lie within the unit ball.
 
 \begin{code}
--- obtain forces for ALL POINTS
-getForces :: [[Float]] -> Int -> [[Float]]
-getForces allPoints s = [getForceSinglePoint activePoint allPoints s | activePoint <- allPoints]
-
--- obtain accelerations f/m = a, for this case 'm' is unity. TODO check if this needs changing
-getAccelerations :: [[Float]] -> Int -> [[Float]]
-getAccelerations allPoints s = getForces allPoints s
-
-extractPoints ::  [([Float],[Float])] -> [[Float]]
-extractPoints inTupList = [x | (x,y) <- inTupList]
-
-extractVelocities :: [([Float],[Float])] -> [[Float]]
-extractVelocities inTupList = [y | (x,y) <- inTupList]
-
-extractPointStruct :: ((Float, Int),[([Float],[Float])]) -> [([Float],[Float])]
-extractPointStruct (a,b) = b
-
-
--- update all velocities THEN positions - STANDARD EULER METHOD
--- v = v_old + a * dt
-getNewVelocities :: [([Float],[Float])] -> Float -> Int -> [[Float]]
-getNewVelocities pointStruct dt s = [normIfGtr (zipWith(+) x y) 0.5 | (x,y) <- (zip (extractVelocities pointStruct) (multListOfListByConst dt (getAccelerations (extractPoints pointStruct) s)))]
-
--- x = x_old + v * dt
-updateAllPoints :: [([Float],[Float])] -> Float -> Int -> [([Float],[Float])]
-updateAllPoints pointStruct dt s = [((normIfGtr ((zipWith(+) x (map (dt *) y))) 1.0),y) | (x,y) <- (zip (extractPoints pointStruct) (getNewVelocities pointStruct dt s))]
+-- one Euler time step over the whole simulation
+step :: Sim -> Sim
+step sim = sim { particles = map update (particles sim) }
+  where
+    s    = sExp sim
+    h    = dt sim
+    locs = map pos (particles sim)
+    update p = Particle
+        { pos = clampNorm 1.0 (vadd (pos p) (scaleVec h v'))
+        , vel = v'
+        }
+      where
+        a  = forceOn s locs (pos p)          -- mass = 1, so a = F
+        v' = clampNorm 0.5 (vadd (vel p) (scaleVec h a))
 \end{code}
 
-\subsubsection{Repackaging Variables - The Transition Function}
-Finally, the transition function can be fully defined, which takes the structure made earlier in \texttt{makeStruct} and returns an identical datatype which the transitition function can be applied to again.
-The transition function uses the method in \texttt{updateAllPoints} to apply the Euler method update to all the constellation points.
+\subsubsection{Running the Simulation}
+Running the simulation is simply iterating \texttt{step} and taking the $n$-th element.
+Because Haskell is lazy, \texttt{iterate} builds the (infinite) list of states on demand and only the requested one is forced.
+
 \begin{code}
---                  dt     s       pointstruct
-transFunction :: ((Float, Int),[([Float],[Float])]) -> ((Float, Int),[([Float],[Float])])
-transFunction ((x,y),b) = ((x,y), updateAllPoints b x y)
-
--- Run Iterator With Random Start to Trans Function
-runIterator :: Int -> Int -> Float -> Int -> Int -> IO ((Float, Int),[([Float],[Float])])
-runIterator d k dt s numIter = makeState d k dt s >>= \x -> return ((take (numIter+1) (iterate transFunction x)) !! numIter)
-
--- iterateToFile d k dt s numIter = runIterator d k dt s >>= show
+runSim :: Int -> Sim -> Sim
+runSim n sim = iterate step sim !! n
 \end{code}
 
 \subsection{Display Code}
-
-{\color{red} TODO}
-
--- plotting code here
-
-\subsection{Debug Code}
-\emph{Debug Code} was written to allow for example tests to be generated to aid algorithm development.
-\texttt{debugAllPoint}  generates a pure example set of random points.
-\texttt{debugTestStruct} generates a pure example `state' structure.
-\texttt{debugPointStruct} generates a pure list of points with velocities. 
-\texttt{debugShowRandomPoints} allows for an impure random points to be displayed to \texttt{stdout}.
-\texttt{debugTest} runs a pure simulation, safe from any IO monad wrapper.
+The quantity being maximised is the minimum pairwise $L_2$ distance, computed by \texttt{minDistance} over all distinct pairs.
 
 \begin{code}
-debugAllPoint :: Int -> Int -> [[Float]]
-debugAllPoint d k
-    | d < 0     = error "Negative dimensions are not allowed"
-    | k < 0     = error "Negative points is not allowed"
-    | otherwise = chunksOf d ( take (d*k) (randomRs (-0.5,0.5) (mkStdGen 42))  ) 
-
-debugTestStruct :: Float -> Int -> Int -> Int -> ((Float,Int),[([Float],[Float])])
-debugTestStruct dt s d k = ((dt,s), zip (debugAllPoint d k) ([makeZeroVelocity d | cnt <- (debugAllPoint d k)]) )
-
-debugPointStruct :: Int -> Int -> [([Float],[Float])]
-debugPointStruct d k = zip (debugAllPoint d k) ([makeZeroVelocity 2 | cnt <- (debugAllPoint d k)]) 
-
--- debug code - show some random starting positions
-debugShowRandomPoints :: Int -> Int -> IO ()
-debugShowRandomPoints a b = makeAllPointTups a b >>= print
-
-debugTest :: Int -> Int -> Float -> Int -> Int -> ((Float,Int),[([Float],[Float])])
-debugTest d k dt s numIter = (take (numIter+1) (iterate transFunction (debugTestStruct dt s d k))) !! numIter
-
-showTest :: Int -> Int -> Float -> Int -> Int -> IO ()
-showTest d k dt s numIter = (runIterator d k dt s numIter) >>= print 
-
+-- minimum pairwise distance --- the value we are trying to maximise
+minDistance :: [Particle] -> Double
+minDistance ps =
+    minimum [ l2 (vsub (pos a) (pos b))
+            | (i, a) <- numbered
+            , (j, b) <- numbered
+            , i < (j :: Int) ]
+  where numbered = zip [0 ..] ps
 \end{code}
 
+The result is plotted directly in Haskell.
+For the two-dimensional case the plot shows the green unit circle (the boundary of the ball), each constellation point, and a blue `packing circle' of radius \texttt{minDistance / 2} around every point: when these circles just touch, the packing is locally optimal.
+Both axes are fixed to the same range and the image is rendered square so that circles are not distorted.
+The helper \texttt{circle} samples a circle as a closed polyline.
+
+\begin{code}
+-- a circle of radius r about (cx, cy), as a closed polyline
+circle :: Double -> (Double, Double) -> [(Double, Double)]
+circle r (cx, cy) =
+    [ (cx + r * cos t, cy + r * sin t) | t <- [0, pi / 60 .. 2 * pi] ]
+
+plotSim :: FilePath -> Sim -> IO ()
+plotSim file sim = toFile opts file $ do
+    layout_title .= "Thomson packing (min distance = " ++ show md ++ ")"
+    layout_x_axis . laxis_generate .= scaledAxis def (-1.1, 1.1)
+    layout_y_axis . laxis_generate .= scaledAxis def (-1.1, 1.1)
+    setColors [opaque green, opaque blue, opaque red]
+    plot (line "unit ball"      [circle 1.0 (0, 0)])
+    plot (line "packing radius" [circle (md / 2) c | c <- pts])
+    plot (points "points" pts)
+  where
+    opts = def & fo_size .~ (600, 600)
+    pts  = map (to2D . pos) (particles sim)
+    md   = minDistance (particles sim)
+
+-- project a vector onto its first two coordinates for 2-D plotting
+to2D :: Vec -> (Double, Double)
+to2D (x : y : _) = (x, y)
+to2D _           = error "to2D: need at least two dimensions to plot"
+\end{code}
+
+\subsection{Main}
+The entry point runs a small example --- 16 points in the 2-ball --- and both prints the achieved minimum distance and writes the plot.
+
+\begin{code}
+main :: IO ()
+main = do
+    sim <- initSim 2 16 0.001 4
+    let final = runSim 10000 sim
+    putStrLn $ "min pairwise distance: "
+               ++ show (minDistance (particles final))
+    plotSim "thomson.svg" final
+    putStrLn "wrote thomson.svg"
+\end{code}
+
+\subsection{Debug Code}
+For reproducible tests, \texttt{seededSim} builds an initial state from a fixed random seed, so it is pure (no \texttt{IO}) and produces the same points on every run.
+\texttt{debugRun} then runs the simulation on that deterministic state.
+
+\begin{code}
+-- deterministic initial state from a fixed seed (no IO)
+seededSim :: Int -> Int -> Double -> Int -> Sim
+seededSim d k dt' s =
+    Sim dt' s [ Particle p (replicate d 0) | p <- chunksOf d coords ]
+  where
+    coords = take (d * k) (randomRs (-0.5, 0.5) (mkStdGen 42))
+
+-- run a reproducible simulation, free of the IO monad
+debugRun :: Int -> Int -> Double -> Int -> Int -> Sim
+debugRun d k dt' s numIter = runSim numIter (seededSim d k dt' s)
+\end{code}
 
 \section{Results}
 {\color{red}Discussion here..}

@@ -10,11 +10,21 @@ This program hopes to use the cartesian product of 2-balls to gain a space advan
 A small modification that I will make soon is to place the points on the (n-1)-sphere.
 
 ## How do I run this or view documentation?
-To view documentation run `pdflatex thomson.lhs`
+The program depends on `random`, `split`, `Chart` and `Chart-diagrams`. A
+minimal `thomson.cabal` is included, so the easiest way to build and run is:
 
-To compile for the program run `ghc -o thomson thomson.lhs`
+```
+cabal run thomson
+```
 
-Currently there is no `main` so you may want to just load into GHCi `:l thomson`
+This runs the example simulation (16 points in the 2-ball), prints the achieved
+minimum pairwise distance, and writes the plot to `thomson.svg` — the plotting is
+done entirely in Haskell, so no external tooling is needed.
+
+To experiment interactively, load it into GHCi with `cabal repl` and call e.g.
+`debugRun 2 16 0.001 4 10000` for a reproducible (fixed-seed) run.
+
+To view the documentation/paper run `pdflatex thomson.lhs`.
 
 ## FAQs
 ### Why was this even made?

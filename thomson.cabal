@@ -1,0 +1,10 @@
+cabal-version:      2.4
+name:               thomson
+version:            0.1.0.0
+build-type:         Simple
+
+executable thomson
+    main-is:          thomson.lhs
+    build-depends:    base, random, split, Chart, Chart-diagrams
+    default-language: Haskell2010
+    ghc-options:      -Wall
