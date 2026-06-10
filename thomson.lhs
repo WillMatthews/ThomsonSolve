@@ -158,21 +158,43 @@ The `force' on a point $p$ from another point $q$ under the Riesz s-energy metho
 \begin{equation}
     F_{p,q} = \frac{p - q}{\norm{p-q}_2^{s+1}}
 \end{equation}
-for some $s \in \mathbb{N}$, which is repulsive (it pushes $p$ away from $q$). This is computed by \texttt{pairForce}.
-For the equispacing case, $s$ is driven to infinity to make the closest point dominate, but this is not possible due to numerical instability, so $s \approx 20$ and above can be used to gain a good approximation.
+for some $s \in \mathbb{N}$, which is repulsive (it pushes $p$ away from $q$).
+For the equispacing case, $s$ is driven to infinity to make the closest point dominate.
 A way of visualising the $s \rightarrow \infty$ case is each point having a hard sphere around it --- and once points are equispaced the spheres (of identical radius) touch their neighbours.
-The self-interaction term ($p = q$, giving a zero denominator) contributes no force.
+
+Taken literally the expression above is numerically unstable for large $s$: when $\norm{p-q}_2 < 1$ the denominator $\norm{p-q}_2^{s+1}$ underflows to zero (an infinite force), and when $\norm{p-q}_2 > 1$ it overflows.
+To avoid this we rescale every distance by the \emph{current minimum pairwise distance} $r_{\min}$ before raising it to the power, computing
+\begin{equation}
+    F_{p,q} = \left(\frac{r_{\min}}{\norm{p-q}_2}\right)^{s+1} (p - q).
+\end{equation}
+This is exactly the original force multiplied by the per-iteration constant $r_{\min}^{\,s+1}$, so it leaves the \emph{relative} forces (and hence the dynamics) unchanged --- it merely behaves like an adaptive step size.
+The nearest pair now has a ratio of $\approx 1$ so its force stays $O(1)$ for any $s$, while more distant pairs decay towards zero as $s$ grows --- precisely the desired $s \rightarrow \infty$ behaviour.
+This is computed by \texttt{pairForce}; the self-interaction term ($p = q$, giving a zero denominator) contributes no force.
 
 \begin{code}
--- repulsive Riesz s-force on point `p` due to neighbour `q`
-pairForce :: Int -> Vec -> Vec -> Vec
-pairForce s p q
+-- repulsive Riesz s-force on point `p` due to neighbour `q`. Distances are
+-- rescaled by `ref` (the current minimum pairwise distance) for stability.
+pairForce :: Int -> Double -> Vec -> Vec -> Vec
+pairForce s ref p q
     | s <= 0    = error "pairForce: s must be a positive integer"
     | r == 0    = replicate (length p) 0   -- same point: no self-force
-    | otherwise = scaleVec (1 / r ^ (s + 1)) d
+    | otherwise = scaleVec ((ref / r) ^ (s + 1)) d
   where
     d = vsub p q
     r = l2 d
+\end{code}
+
+The reference distance is found by \texttt{minPairDist}, the smallest $L_2$ distance over all distinct pairs of points.
+
+\begin{code}
+-- minimum pairwise L2 distance of a set of points
+minPairDist :: [Vec] -> Double
+minPairDist vs =
+    minimum [ l2 (vsub a b)
+            | (i, a) <- numbered
+            , (j, b) <- numbered
+            , i < (j :: Int) ]
+  where numbered = zip [0 ..] vs
 \end{code}
 
 The total force on a single point is the sum of the pair forces from every point (its own term is zero, so it can be left in the sum).
@@ -183,9 +205,9 @@ The total force on a single point is the sum of the pair forces from every point
 sumVecs :: [Vec] -> Vec
 sumVecs = map sum . transpose
 
--- total force on point `p` from all points `qs`
-forceOn :: Int -> [Vec] -> Vec -> Vec
-forceOn s qs p = sumVecs (map (pairForce s p) qs)
+-- total force on point `p` from all points `qs`, rescaled by `ref`
+forceOn :: Int -> Double -> [Vec] -> Vec -> Vec
+forceOn s ref qs p = sumVecs (map (pairForce s ref p) qs)
 \end{code}
 
 \subsubsection{Euler Physics Update}
@@ -211,22 +233,32 @@ step sim = sim { particles = map update (particles sim) }
     s    = sExp sim
     h    = dt sim
     locs = map pos (particles sim)
+    ref  = minPairDist locs               -- rescale distances for stability
     update p = Particle
         { pos = clampNorm 1.0 (vadd (pos p) (scaleVec h v'))
         , vel = v'
         }
       where
-        a  = forceOn s locs (pos p)          -- mass = 1, so a = F
+        a  = forceOn s ref locs (pos p)      -- mass = 1, so a = F
         v' = clampNorm 0.5 (vadd (vel p) (scaleVec h a))
 \end{code}
 
 \subsubsection{Running the Simulation}
-Running the simulation is simply iterating \texttt{step} and taking the $n$-th element.
-Because Haskell is lazy, \texttt{iterate} builds the (infinite) list of states on demand and only the requested one is forced.
+Running the simulation iterates \texttt{step} $n$ times.
+The naive \texttt{iterate step sim !!\ n} is lazy, which over thousands of iterations builds up a large chain of unevaluated thunks (a space leak).
+Instead \texttt{runSim} forces each intermediate state to normal form with \texttt{forceSim} before continuing, so memory use stays flat.
 
 \begin{code}
 runSim :: Int -> Sim -> Sim
-runSim n sim = iterate step sim !! n
+runSim n = go n
+  where
+    go 0 sim = sim
+    go k sim = go (k - 1) $! forceSim (step sim)
+
+-- force every coordinate of a Sim, so no thunks are left behind
+forceSim :: Sim -> Sim
+forceSim sim = foldr seq sim
+    [ x | p <- particles sim, x <- pos p ++ vel p ]
 \end{code}
 
 \subsection{Display Code}
@@ -235,12 +267,7 @@ The quantity being maximised is the minimum pairwise $L_2$ distance, computed by
 \begin{code}
 -- minimum pairwise distance --- the value we are trying to maximise
 minDistance :: [Particle] -> Double
-minDistance ps =
-    minimum [ l2 (vsub (pos a) (pos b))
-            | (i, a) <- numbered
-            , (j, b) <- numbered
-            , i < (j :: Int) ]
-  where numbered = zip [0 ..] ps
+minDistance = minPairDist . map pos
 \end{code}
 
 The result is plotted directly in Haskell.
@@ -275,12 +302,12 @@ to2D _           = error "to2D: need at least two dimensions to plot"
 \end{code}
 
 \subsection{Main}
-The entry point runs a small example --- 16 points in the 2-ball --- and both prints the achieved minimum distance and writes the plot.
+The entry point runs a small example --- 16 points in the 2-ball with a large Riesz exponent ($s = 20$), which the distance rescaling now makes stable --- and both prints the achieved minimum distance and writes the plot.
 
 \begin{code}
 main :: IO ()
 main = do
-    sim <- initSim 2 16 0.001 4
+    sim <- initSim 2 16 0.05 20
     let final = runSim 10000 sim
     putStrLn $ "min pairwise distance: "
                ++ show (minDistance (particles final))
